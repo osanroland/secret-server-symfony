@@ -1,0 +1,4 @@
+{
+    "symfony-vscode.enableFileWatching": true,
+    "php.executablePath": "/Applications/MAMP/bin/php/php7.4.21/bin/php"
+}

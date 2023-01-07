@@ -21,7 +21,7 @@ class SecretRepository extends ServiceEntityRepository
         parent::__construct($registry, Secret::class);
     }
 
-    public function save(Secret $entity, bool $flush = false): void
+    public function save(Secret $entity, bool $flush = true): void
     {
         $this->getEntityManager()->persist($entity);
 
@@ -29,38 +29,15 @@ class SecretRepository extends ServiceEntityRepository
             $this->getEntityManager()->flush();
         }
     }
+    
 
-    public function remove(Secret $entity, bool $flush = false): void
-    {
-        $this->getEntityManager()->remove($entity);
-
-        if ($flush) {
-            $this->getEntityManager()->flush();
-        }
-    }
-
-//    /**
-//     * @return Secret[] Returns an array of Secret objects
-//     */
-//    public function findByExampleField($value): array
-//    {
-//        return $this->createQueryBuilder('s')
-//            ->andWhere('s.exampleField = :val')
-//            ->setParameter('val', $value)
-//            ->orderBy('s.id', 'ASC')
-//            ->setMaxResults(10)
-//            ->getQuery()
-//            ->getResult()
-//        ;
-//    }
-
-//    public function findOneBySomeField($value): ?Secret
-//    {
-//        return $this->createQueryBuilder('s')
-//            ->andWhere('s.exampleField = :val')
-//            ->setParameter('val', $value)
-//            ->getQuery()
-//            ->getOneOrNullResult()
-//        ;
-//    }
+   public function findOneByHash($value): ?Secret
+   {
+       return $this->createQueryBuilder('s')
+           ->andWhere('s.hash = :val')
+           ->setParameter('val', $value)
+           ->getQuery()
+           ->getOneOrNullResult()
+       ;
+   }
 }

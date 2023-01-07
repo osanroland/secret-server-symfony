@@ -5,75 +5,161 @@ namespace App\Controller;
 use App\Entity\Secret;
 use DateTime;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Doctrine\Persistence\ManagerRegistry;
-use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
-use Symfony\Component\Validator\Validator\ValidatorInterface;
+use App\Factory\SecretFactory;
+use App\Repository\SecretRepository;
+use Symfony\Component\HttpFoundation\Response;
+use SimpleXMLElement;
 
 class SecretController extends AbstractController
 {
+
+    private $secretRepository;
+
+    public function __construct(SecretRepository $secretRepository)
+    {
+        $this->secretRepository = $secretRepository;
+    }
     #[Route('/secret', name: 'create_secret', methods:['POST'])]
-    public function creaetSecret(ManagerRegistry $doctrine ,Request $request): JsonResponse
+    public function creaetSecret(Request $request): Response
     {
 
-        $entityManager = $doctrine->getManager();
+        $acceptType = $request->headers->get('Accept');
+        $contentType = $request->getContentType();
 
-        $hash = bin2hex(random_bytes(20));
-        $secretText = $request->request->get('secretText');
-        $expireAfter = New DateTime($request->request->get('expireAfter'));
-        $expireAfterViews = $request->request->get('expireAfterViews');
+        
+        switch ($contentType){
+            case 'form':
+                if (empty($request->request->get('secretText')) || empty($request->request->get('expireAfter')) || empty($request->request->get('expireAfterViews'))) {
+                    throw $this->createNotFoundException('Please set all fields!');
+                }
 
-        $secret = new Secret();
-        $secret->setHash($hash);
-        $secret->setSecretText($secretText);
-        $secret->setCreatedAt(New DateTime('now'));
-        $secret->setExpiresAt($expireAfter);
-        $secret->setRemainingViews($expireAfterViews);
+                $secretText = $request->request->get('secretText');
+                $expireAfter = $request->request->get('expireAfter');
+                $expireAfterViews = $request->request->get('expireAfterViews');
+            break;
+            case 'json':
+                $data = json_decode($request->getContent(), true);
 
-        $entityManager->persist($secret);
+                if (empty($data['secretText']) || empty($data['expireAfter']) || empty($data['expireAfterViews'])) {
+                    throw $this->createNotFoundException('Please set all fields!');
+                }
+                $secretText = $data['secretText'];
+                $expireAfter = $data['expireAfter'];
+                $expireAfterViews = $data['expireAfterViews'];
+        }
 
-        $entityManager->flush();
+        $secret = SecretFactory::create(
+            $secretText,
+            $expireAfter,
+            $expireAfterViews
+        );
+
+        $this->secretRepository->save($secret);
 
         $data = [
             'hash' => $secret->getHash(),
             'secretText' => $secret->getSecretText(),
-            'createdAt' => $secret->getCreatedAt(),
-            'expires_at' => $secret->getExpiresAt(),
+            'createdAt' => $secret->getCreatedAt()->format('Y-m-d H:i:s'),
+            'expires_at' => $secret->getExpiresAt()->format('Y-m-d H:i:s'),
             'remainingViews' => $secret->getRemainingViews()
         ];
-        
-        $response = new JsonResponse();
-        $response->setData($data);
+
+        $response = new Response();
+        $response->setStatusCode(201, 'Created');
+
+        switch ($acceptType) {
+            case 'text/json':
+                $response->setContent(json_encode($data));
+                $response->headers->set('Content-Type', 'application/json');
+            break;
+            case 'text/xml':
+
+                $xml = new SimpleXMLElement('<secret/>');
+                array_walk_recursive($data, array($xml, 'addChild'));
+                $response->setContent($xml);
+                $response->headers->set('Content-Type', 'application/xml');
+            break;
+            default:
+                $response->setContent(json_encode($data));
+                $response->headers->set('Content-Type', 'application/json');
+        }
         
         return $response;
     }
 
-    #[Route('/secret/{hash}', name: 'show_secret')]
-    public function showSecret(ManagerRegistry $doctrine, string $hash): JsonResponse
+    #[Route('/secret/{hash}', name: 'show_secret', methods:['GET'])]
+    public function showSecret(string $hash, Request $request): Response
     {
-        $secret = $doctrine->getRepository(Secret::class)
-        ->findOneBy(
-            ['hash' => $hash]
-        );
+        $acceptType = $request->headers->get('Accept');
+
+        $secret = $this->secretRepository->findOneByHash($hash);
 
         if (!$secret) {
             throw $this->createNotFoundException(
-                'No product found for id '.$hash
+                'No product found for id ' . $hash
             );
         }
+
+        $isExpired = $this->validateSecret($secret);
+
+        if ($isExpired) {
+            throw $this->createNotFoundException(
+                'Secret is no longer availabe'
+            );
+        }
+
+        $this->decreaseRemainingViews($secret);
+
 
         $data = [
             'hash' => $secret->getHash(),
             'secretText' => $secret->getSecretText(),
-            'createdAt' => $secret->getCreatedAt(),
-            'expires_at' => $secret->getExpiresAt(),
+            'createdAt' => $secret->getCreatedAt()->format('Y-m-d H:i:s'),
+            'expires_at' => $secret->getExpiresAt()->format('Y-m-d H:i:s'),
             'remainingViews' => $secret->getRemainingViews()
         ];
-         
-        $response = new JsonResponse();
-        $response->setData($data);
-        
+
+        $response = new Response();
+
+        switch ($acceptType) {
+            case 'text/json':
+                $response->setContent(json_encode($data));
+                $response->headers->set('Content-Type', 'application/json');
+                break;
+            case 'text/xml':
+                $data = array_flip($data);
+                $xml = new SimpleXMLElement('<secret/>');
+                array_walk_recursive($data, array($xml, 'addChild'));
+                $response->setContent($xml->asXML());
+                $response->headers->set('Content-Type', 'application/xml');
+                break;
+            default:
+                $response->setContent(json_encode($data));
+                $response->headers->set('Content-Type', 'application/json');
+        }
+    
         return $response;
     }
+
+    public function validateSecret(Secret $secret): bool
+    {
+        $now = new DateTime();
+
+        if ($secret->getExpiresAt() < $now || $secret->getRemainingViews() === 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public function decreaseRemainingViews (Secret $secret) 
+    {
+        $secret->setRemainingViews($secret->getRemainingViews()-1);
+
+        $this->secretRepository->save($secret);
+
+    }
+
 }
