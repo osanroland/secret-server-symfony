@@ -117,7 +117,7 @@ class SecretController extends AbstractController
             'hash' => $secret->getHash(),
             'secretText' => $secret->getSecretText(),
             'createdAt' => $secret->getCreatedAt()->format('Y-m-d H:i:s'),
-            'expires_at' => $secret->getExpiresAt()->format('Y-m-d H:i:s'),
+            'expiresAt' => $secret->getExpiresAt()->format('Y-m-d H:i:s'),
             'remainingViews' => $secret->getRemainingViews()
         ];
 
