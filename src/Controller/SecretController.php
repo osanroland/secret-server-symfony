@@ -28,7 +28,6 @@ class SecretController extends AbstractController
         $acceptType = $request->headers->get('Accept');
         $contentType = $request->getContentType();
 
-        
         switch ($contentType){
             case 'form':
                 if (empty($request->request->get('secretText')) || empty($request->request->get('expireAfter')) || empty($request->request->get('expireAfterViews'))) {
@@ -58,33 +57,12 @@ class SecretController extends AbstractController
 
         $this->secretRepository->save($secret);
 
-        $data = [
-            'hash' => $secret->getHash(),
-            'secretText' => $secret->getSecretText(),
-            'createdAt' => $secret->getCreatedAt()->format('Y-m-d H:i:s'),
-            'expiresAt' => $secret->getExpiresAt()->format('Y-m-d H:i:s'),
-            'remainingViews' => $secret->getRemainingViews()
-        ];
+        $data = $this->setResponseBody($secret);
 
         $response = new Response();
         $response->setStatusCode(201, 'Created');
 
-        switch ($acceptType) {
-            case 'text/json':
-                $response->setContent(json_encode($data));
-                $response->headers->set('Content-Type', 'application/json');
-            break;
-            case 'text/xml':
-
-                $xml = new SimpleXMLElement('<secret/>');
-                array_walk_recursive($data, array($xml, 'addChild'));
-                $response->setContent($xml);
-                $response->headers->set('Content-Type', 'application/xml');
-            break;
-            default:
-                $response->setContent(json_encode($data));
-                $response->headers->set('Content-Type', 'application/json');
-        }
+        $this->setResponseByAcceptType($acceptType, $data, $response);
         
         return $response;
     }
@@ -112,33 +90,11 @@ class SecretController extends AbstractController
 
         $this->decreaseRemainingViews($secret);
 
-
-        $data = [
-            'hash' => $secret->getHash(),
-            'secretText' => $secret->getSecretText(),
-            'createdAt' => $secret->getCreatedAt()->format('Y-m-d H:i:s'),
-            'expiresAt' => $secret->getExpiresAt()->format('Y-m-d H:i:s'),
-            'remainingViews' => $secret->getRemainingViews()
-        ];
+        $data = $this->setResponseBody($secret);
 
         $response = new Response();
 
-        switch ($acceptType) {
-            case 'text/json':
-                $response->setContent(json_encode($data));
-                $response->headers->set('Content-Type', 'application/json');
-                break;
-            case 'text/xml':
-                $data = array_flip($data);
-                $xml = new SimpleXMLElement('<secret/>');
-                array_walk_recursive($data, array($xml, 'addChild'));
-                $response->setContent($xml->asXML());
-                $response->headers->set('Content-Type', 'application/xml');
-                break;
-            default:
-                $response->setContent(json_encode($data));
-                $response->headers->set('Content-Type', 'application/json');
-        }
+        $this->setResponseByAcceptType($acceptType, $data, $response);
     
         return $response;
     }
@@ -160,6 +116,44 @@ class SecretController extends AbstractController
 
         $this->secretRepository->save($secret);
 
+    }
+
+    public function setResponseBody(Secret $secret): array
+    {
+        $data = [
+            'hash' => $secret->getHash(),
+            'secretText' => $secret->getSecretText(),
+            'createdAt' => $secret->getCreatedAt()->format('Y-m-d H:i:s'),
+            'expiresAt' => $secret->getExpiresAt()->format('Y-m-d H:i:s'),
+            'remainingViews' => $secret->getRemainingViews()
+        ];
+
+        return $data;
+    }
+
+    public function setResponseByAcceptType(string $acceptType, array $data, Response $response): Response
+    {
+
+        $resp = $response;
+
+        switch ($acceptType) {
+            case 'text/json':
+                $response->setContent(json_encode($data));
+                $response->headers->set('Content-Type', 'application/json');
+                break;
+            case 'text/xml':
+                $data = array_flip($data);
+                $xml = new SimpleXMLElement('<secret/>');
+                array_walk_recursive($data, array($xml, 'addChild'));
+                $response->setContent($xml->asXML());
+                $response->headers->set('Content-Type', 'application/xml');
+                break;
+            default:
+                $response->setContent(json_encode($data));
+                $response->headers->set('Content-Type', 'application/json');
+        }
+
+        return $resp;
     }
 
 }
