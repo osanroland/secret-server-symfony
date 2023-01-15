@@ -14,46 +14,21 @@ use SimpleXMLElement;
 
 class SecretController extends AbstractController
 {
-
-    private $secretRepository;
+    private SecretRepository $secretRepository;
 
     public function __construct(SecretRepository $secretRepository)
     {
         $this->secretRepository = $secretRepository;
     }
+
     #[Route('/secret', name: 'create_secret', methods:['POST'])]
     public function creaetSecret(Request $request): Response
     {
-
         $acceptType = $request->headers->get('Accept');
         $contentType = $request->getContentType();
 
-        switch ($contentType){
-            case 'form':
-                if (empty($request->request->get('secretText')) || empty($request->request->get('expireAfter')) || empty($request->request->get('expireAfterViews'))) {
-                    throw $this->createNotFoundException('Please set all fields!');
-                }
-
-                $secretText = $request->request->get('secretText');
-                $expireAfter = $request->request->get('expireAfter');
-                $expireAfterViews = $request->request->get('expireAfterViews');
-            break;
-            case 'json':
-                $data = json_decode($request->getContent(), true);
-
-                if (empty($data['secretText']) || empty($data['expireAfter']) || empty($data['expireAfterViews'])) {
-                    throw $this->createNotFoundException('Please set all fields!');
-                }
-                $secretText = $data['secretText'];
-                $expireAfter = $data['expireAfter'];
-                $expireAfterViews = $data['expireAfterViews'];
-        }
-
-        $secret = SecretFactory::create(
-            $secretText,
-            $expireAfter,
-            $expireAfterViews
-        );
+        $paramsArray = $this->getRequestDataByContentType($request, $contentType);
+        $secret = $this->createSecretObject($paramsArray);
 
         $this->secretRepository->save($secret);
 
@@ -61,8 +36,7 @@ class SecretController extends AbstractController
 
         $response = new Response();
         $response->setStatusCode(201, 'Created');
-
-        $this->setResponseByAcceptType($acceptType, $data, $response);
+        $response = $this->setResponseByAcceptType($acceptType, $data, $response);
         
         return $response;
     }
@@ -94,7 +68,7 @@ class SecretController extends AbstractController
 
         $response = new Response();
 
-        $this->setResponseByAcceptType($acceptType, $data, $response);
+        $response = $this->setResponseByAcceptType($acceptType, $data, $response);
     
         return $response;
     }
@@ -133,9 +107,6 @@ class SecretController extends AbstractController
 
     public function setResponseByAcceptType(string $acceptType, array $data, Response $response): Response
     {
-
-        $resp = $response;
-
         switch ($acceptType) {
             case 'text/json':
                 $response->setContent(json_encode($data));
@@ -153,7 +124,48 @@ class SecretController extends AbstractController
                 $response->headers->set('Content-Type', 'application/json');
         }
 
-        return $resp;
+        return $response;
     }
 
+    public function getRequestDataByContentType(Request $request, string $contentType): array
+    {
+        switch ($contentType) {
+            case 'form':
+                if (empty($request->request->get('secretText')) || empty($request->request->get('expireAfter')) || empty($request->request->get('expireAfterViews'))) {
+                    throw $this->createNotFoundException('Please set all fields!');
+                }
+
+                $secretText = $request->request->get('secretText');
+                $expireAfter = $request->request->get('expireAfter');
+                $expireAfterViews = $request->request->get('expireAfterViews');
+                break;
+            case 'json':
+                $data = json_decode($request->getContent(), true);
+
+                if (empty($data['secretText']) || empty($data['expireAfter']) || empty($data['expireAfterViews'])) {
+                    throw $this->createNotFoundException('Please set all fields!');
+                }
+                $secretText = $data['secretText'];
+                $expireAfter = $data['expireAfter'];
+                $expireAfterViews = $data['expireAfterViews'];
+        }
+
+        return [
+            'secretText' => $secretText,
+            'expireAfter' => $expireAfter,
+            'expireAfterViews' => $expireAfterViews
+        ];
+    }
+
+    public function createSecretObject(array $paramsArray): Secret
+    {
+        $secret = SecretFactory::create(
+            $paramsArray['secretText'],
+            $paramsArray['expireAfter'],
+            $paramsArray['expireAfterViews']
+        );
+
+        return $secret;
+    }
+   
 }
